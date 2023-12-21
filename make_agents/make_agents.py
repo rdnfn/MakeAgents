@@ -118,6 +118,30 @@ def description(action_func: callable) -> dict:
 
 
 def get_func_input_from_llm(messages: list[dict], func: callable, completion: callable):
+    """Get the input for a function from the LLM.
+
+    Parameters
+    ----------
+    messages : list[dict]
+        The list of messages to send to the LLM as context.
+    func : callable
+        The function to get input for.
+    completion : callable
+        The function to use to get completions from the LLM.
+
+    Returns
+    -------
+    func_arg_message : dict
+        The message returned by the API that includes the function's argument.
+    func_arg : BaseModel
+        The function's arguments created by LLM.
+    """
+
+    # forces the LLM to call the function
+    # (instead of e.g. outputting a message)
+    # This uses a deprecated OpenAI API
+    # (https://platform.openai.com/docs/api-reference/chat/create)
+    # May need to move to tools and tool_choice API parameters
     response = completion(
         messages=messages,
         functions=[description(func)],
@@ -197,8 +221,12 @@ def run_agent(
         At each step, the list of messages is yielded,
         i.e. the same list that was yielded in the previous step, with one more message appended.
     """
+
+    # ensure action_graph is a callable
     if isinstance(action_graph, dict):
         action_graph = dict_to_action_graph_func(action_graph)
+
+    # initialise action graph loop variables
     messages = (
         deepcopy(messages_init)
         if messages_init
@@ -206,29 +234,53 @@ def run_agent(
     )
     current_action = Start
     current_action_result = None
+
+    # main action graph loop
     while True:
+        # get next action options
+        # (note current_action_result does not impact this)
         next_action_options = action_graph(
             current_action=current_action, current_action_result=current_action_result
         )
+
         if not next_action_options:
             break
-        # DECIDE NEXT ACTION
+
+        # decide next action
         if len(next_action_options) == 1:
+            # only one option, no need to choose
             current_action = next_action_options[0]
         else:
+            # multiple options, LLM needs to choose
             pre_llm_callback(messages)
-            select_next_action: callable = select_next_action_factory(next_action_options)
+
+            # creates additional separate action function,
+            # for choosing the next action
+            select_next_action: callable = select_next_action_factory(
+                next_action_options
+            )
+            # get the next action from LLM (via function OpenAI function call)
             func_arg_message, func_arg = get_func_input_from_llm(
                 messages, select_next_action, completion
             )
+
+            # yield the messages after the LLM call
             messages.append(func_arg_message)
             yield deepcopy(messages)
+
+            # run the selected action function with args
+            # previously obtained from LLM
+            # (note: this step may not use any LLM, it can just be a regular python function)
             pre_llm_callback(messages)
             func_result_message, func_result = run_func_for_llm(
                 select_next_action, func_arg
             )
+
+            # yield the messages after action function is run
+            # (note: this now includes the result of the action function)
             messages.append(func_result_message)
             yield deepcopy(messages)
+
             current_action = next(
                 x for x in next_action_options if description(x)["name"] == func_result
             )
