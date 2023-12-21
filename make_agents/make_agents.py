@@ -246,7 +246,7 @@ def run_agent(
         if not next_action_options:
             break
 
-        # decide next action
+        # DECIDE NEXT ACTION
         if len(next_action_options) == 1:
             # only one option, no need to choose
             current_action = next_action_options[0]
@@ -256,9 +256,7 @@ def run_agent(
 
             # creates additional separate action function,
             # for choosing the next action
-            select_next_action: callable = select_next_action_factory(
-                next_action_options
-            )
+            select_next_action: callable = select_next_action_factory(next_action_options)
             # get the next action from LLM (via function OpenAI function call)
             func_arg_message, func_arg = get_func_input_from_llm(
                 messages, select_next_action, completion
@@ -268,9 +266,9 @@ def run_agent(
             messages.append(func_arg_message)
             yield deepcopy(messages)
 
-            # run the selected action function with args
-            # previously obtained from LLM
-            # (note: this step may not use any LLM, it can just be a regular python function)
+            # actually get the next action by running the function that selects the next action
+            # with the arguments previously obtained from LLM
+            # (note: this step does not use any LLM calls)
             pre_llm_callback(messages)
             func_result_message, func_result = run_func_for_llm(
                 select_next_action, func_arg
@@ -281,13 +279,17 @@ def run_agent(
             messages.append(func_result_message)
             yield deepcopy(messages)
 
+            # set the next action (if LLM output is valid and available action name)
             current_action = next(
                 x for x in next_action_options if description(x)["name"] == func_result
             )
+
         if current_action == End:
             break
+
         # RUN THE ACTION
         if description(current_action)["parameters"]:
+            # if there are function parameters for the action, get them from LLM
             pre_llm_callback(messages)
             func_arg_message, func_arg = get_func_input_from_llm(
                 messages, current_action, completion
@@ -302,8 +304,12 @@ def run_agent(
                 },
             }
             func_arg = None
+
+        # return intermediary messages
         messages.append(func_arg_message)
         yield deepcopy(messages)
+
+        # run the action function with the arguments obtained from LLM
         pre_llm_callback(messages)
         func_result_message, func_result = run_func_for_llm(current_action, func_arg)
         messages.append(func_result_message)
