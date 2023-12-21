@@ -17,15 +17,15 @@ repos:
       language: system
       files: \.(py|ipynb)$
       pass_filenames: false
-    - id: make-docs
-      name: Generate docs if they are not up to date
-      entry: bash -c 'make docs'
-      language: system
-      always_run: True
-      pass_filenames: false
-    - id: make-readme
-      name: Generate readme from ipynb...
-      entry: bash -c 'make readme'
-      files: \.(py|ipynb)$|^README\.md$
-      language: system
-      pass_filenames: false
+    # - id: make-docs
+    #   name: Generate docs if they are not up to date
+    #   entry: bash -c 'make docs'
+    #   language: system
+    #   always_run: True
+    #   pass_filenames: false
+    # - id: make-readme
+    #   name: Generate readme from ipynb...
+    #   entry: bash -c 'make readme'
+    #   files: \.(py|ipynb)$|^README\.md$
+    #   language: system
+    #   pass_filenames: false
